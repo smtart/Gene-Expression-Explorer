@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gene Expression Explorer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.18.2/plotly.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            color: #666;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .control-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        select, input, button {
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #555;
+        }
+
+        .gene-search {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .search-results {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+
+        .gene-card {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .gene-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .gene-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .gene-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .stat {
+            background: white;
+            padding: 8px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.1em;
+            color: #666;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .dataset-info {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .info-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        @media (max-width: 768px) {
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .control-group {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧬 Gene Expression Explorer</h1>
+            <p>Analyze differential gene expression from NCBI GEO datasets. Compare healthy vs disease samples, identify biomarkers, and explore gene expression patterns with interactive visualizations.</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <div class="input-group">
+                    <label for="datasetSelect">Select Dataset:</label>
+                    <select id="datasetSelect">
+                        <option value="cancer_vs_normal">Cancer vs Normal (Breast Cancer)</option>
+                        <option value="diabetes_vs_control">Diabetes vs Control</option>
+                        <option value="alzheimer_vs_control">Alzheimer's vs Control</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="pvalueThreshold">P-value Threshold:</label>
+                    <input type="number" id="pvalueThreshold" value="0.05" step="0.01" min="0.001" max="0.1">
+                </div>
+                <div class="input-group">
+                    <label for="foldChangeThreshold">Fold Change Threshold:</label>
+                    <input type="number" id="foldChangeThreshold" value="2" step="0.5" min="1" max="10">
+                </div>
+            </div>
+            <button id="analyzeBtn" onclick="performAnalysis()">🔬 Analyze Gene Expression</button>
+            <div id="status"></div>
+        </div>
+
+        <div id="datasetInfo" class="dataset-info" style="display: none;">
+            <h3>Dataset Information</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Total Genes</div>
+                    <div class="info-value" id="totalGenes">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Samples (Disease)</div>
+                    <div class="info-value" id="diseaseSamples">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Samples (Control)</div>
+                    <div class="info-value" id="controlSamples">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Significant Genes</div>
+                    <div class="info-value" id="significantGenes">-</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="resultsContainer" style="display: none;">
+            <div class="results-grid">
+                <div class="chart-container">
+                    <div class="chart-title">📊 Volcano Plot</div>
+                    <div id="volcanoPlot"></div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">📈 Expression Heatmap</div>
+                    <div id="heatmap"></div>
+                </div>
+            </div>
+
+            <div class="gene-search">
+                <h3>🔍 Gene Expression Search</h3>
+                <div class="control-group">
+                    <div class="input-group">
+                        <label for="geneSearch">Search Gene Symbol:</label>
+                        <input type="text" id="geneSearch" placeholder="e.g., TP53, BRCA1, EGFR">
+                    </div>
+                    <div class="input-group">
+                        <label>&nbsp;</label>
+                        <button onclick="searchGene()">Search Gene</button>
+                    </div>
+                </div>
+                <div id="searchResults" class="search-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simulated gene expression data - in a real application, this would come from GEO API
+        const datasets = {
+            cancer_vs_normal: {
+                name: "Breast Cancer vs Normal Tissue",
+                description: "GSE45827 - Breast cancer tissue vs adjacent normal tissue",
+                genes: generateGeneData('BRCA1,BRCA2,TP53,MYC,EGFR,HER2,ESR1,PGR'.split(','), 1200),
+                diseaseSamples: 45,
+                controlSamples: 45
+            },
+            diabetes_vs_control: {
+                name: "Type 2 Diabetes vs Control",
+                description: "GSE38642 - Skeletal muscle from T2D patients vs controls",
+                genes: generateGeneData('INS,INSR,IRS1,GLUT4,PPARG,ADIPOQ,LEP,TNF'.split(','), 1000),
+                diseaseSamples: 38,
+                controlSamples: 42
+            },
+            alzheimer_vs_control: {
+                name: "Alzheimer's Disease vs Control",
+                description: "GSE48350 - Brain tissue from AD patients vs controls",
+                genes: generateGeneData('APP,PSEN1,PSEN2,APOE,MAPT,BACE1,GSK3B,ADAM10'.split(','), 800),
+                diseaseSamples: 34,
+                controlSamples: 36
+            }
+        };
+
+        let currentData = null;
+        let significantGenes = [];
+
+        function generateGeneData(keyGenes, totalGenes) {
+            const genes = [];
+            const geneNames = [];
+            
+            // Add key genes with realistic differential expression
+            keyGenes.forEach(gene => {
+                const foldChange = (Math.random() - 0.3) * 8 + (Math.random() > 0.5 ? 2 : -2);
+                const pValue = Math.random() * 0.1;
+                const avgExpression = Math.random() * 12 + 2;
+                
+                genes.push({
+                    symbol: gene,
+                    foldChange: foldChange,
+                    logFoldChange: Math.log2(Math.abs(foldChange)) * Math.sign(foldChange),
+                    pValue: pValue,
+                    negLogPValue: -Math.log10(pValue),
+                    avgExpression: avgExpression,
+                    diseaseExpr: avgExpression + foldChange/4,
+                    controlExpr: avgExpression - foldChange/4,
+                    isSignificant: pValue < 0.05 && Math.abs(foldChange) > 1.5
+                });
+                geneNames.push(gene);
+            });
+
+            // Add random genes
+            const commonGenes = ['GAPDH', 'ACTB', 'HPRT1', 'RPL19', 'GUSB', 'TBP', 'YWHAZ', 'SDHA', 'UBE2D2', 'PPIA'];
+            for (let i = genes.length; i < totalGenes; i++) {
+                const isCommon = Math.random() < 0.1;
+                const geneName = isCommon ? 
+                    commonGenes[Math.floor(Math.random() * commonGenes.length)] + '_' + i :
+                    'GENE_' + String(i).padStart(4, '0');
+                
+                if (geneNames.includes(geneName)) continue;
+                
+                const foldChange = (Math.random() - 0.5) * 6;
+                const pValue = Math.random();
+                const avgExpression = Math.random() * 10 + 1;
+                
+                genes.push({
+                    symbol: geneName,
+                    foldChange: foldChange,
+                    logFoldChange: Math.log2(Math.abs(foldChange) + 0.1) * Math.sign(foldChange),
+                    pValue: pValue,
+                    negLogPValue: -Math.log10(Math.max(pValue, 1e-10)),
+                    avgExpression: avgExpression,
+                    diseaseExpr: avgExpression + foldChange/4,
+                    controlExpr: avgExpression - foldChange/4,
+                    isSignificant: pValue < 0.05 && Math.abs(foldChange) > 1.5
+                });
+                geneNames.push(geneName);
+            }
+
+            return genes;
+        }
+
+        function showStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+        }
+
+        function performAnalysis() {
+            const datasetKey = document.getElementById('datasetSelect').value;
+            const pThreshold = parseFloat(document.getElementById('pvalueThreshold').value);
+            const fcThreshold = parseFloat(document.getElementById('foldChangeThreshold').value);
+            
+            showStatus('Analyzing gene expression data...', 'info');
+            document.getElementById('analyzeBtn').disabled = true;
+            
+            setTimeout(() => {
+                currentData = datasets[datasetKey];
+                
+                // Filter significant genes
+                significantGenes = currentData.genes.filter(gene => 
+                    gene.pValue < pThreshold && Math.abs(gene.foldChange) > fcThreshold
+                );
+                
+                updateDatasetInfo();
+                createVolcanoPlot();
+                createHeatmap();
+                
+                document.getElementById('datasetInfo').style.display = 'block';
+                document.getElementById('resultsContainer').style.display = 'block';
+                
+                showStatus(`Analysis complete! Found ${significantGenes.length} significantly differentially expressed genes.`);
+                document.getElementById('analyzeBtn').disabled = false;
+            }, 1500);
+        }
+
+        function updateDatasetInfo() {
+            document.getElementById('totalGenes').textContent = currentData.genes.length.toLocaleString();
+            document.getElementById('diseaseSamples').textContent = currentData.diseaseSamples;
+            document.getElementById('controlSamples').textContent = currentData.controlSamples;
+            document.getElementById('significantGenes').textContent = significantGenes.length.toLocaleString();
+        }
+
+        function createVolcanoPlot() {
+            const genes = currentData.genes;
+            
+            const trace = {
+                x: genes.map(g => g.logFoldChange),
+                y: genes.map(g => g.negLogPValue),
+                mode: 'markers',
+                type: 'scatter',
+                text: genes.map(g => `${g.symbol}<br>FC: ${g.foldChange.toFixed(2)}<br>p-value: ${g.pValue.toExponential(2)}`),
+                hovertemplate: '%{text}<extra></extra>',
+                marker: {
+                    size: 6,
+                    color: genes.map(g => g.isSignificant ? (g.foldChange > 0 ? '#ff6b6b' : '#4ecdc4') : '#95a5a6'),
+                    opacity: 0.7,
+                    line: { width: 0.5, color: 'white' }
+                },
+                name: 'Genes'
+            };
+
+            const layout = {
+                title: 'Volcano Plot: -log10(p-value) vs log2(Fold Change)',
+                xaxis: { title: 'log2(Fold Change)', zeroline: true, zerolinecolor: '#666' },
+                yaxis: { title: '-log10(p-value)' },
+                hovermode: 'closest',
+                plot_bgcolor: '#f8f9fa',
+                paper_bgcolor: 'transparent',
+                font: { family: 'Segoe UI', size: 12 },
+                margin: { t: 50, r: 20, b: 50, l: 60 }
+            };
+
+            Plotly.newPlot('volcanoPlot', [trace], layout, {responsive: true});
+        }
+
+        function createHeatmap() {
+            // Select top 20 most significant genes for heatmap
+            const topGenes = [...significantGenes]
+                .sort((a, b) => a.pValue - b.pValue)
+                .slice(0, 20);
+
+            if (topGenes.length === 0) {
+                document.getElementById('heatmap').innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No significant genes found for heatmap</p>';
+                return;
+            }
+
+            // Generate sample data for visualization
+            const sampleCount = currentData.diseaseSamples + currentData.controlSamples;
+            const zValues = topGenes.map(gene => {
+                const row = [];
+                for (let i = 0; i < sampleCount; i++) {
+                    const isDisease = i < currentData.diseaseSamples;
+                    const baseExpr = isDisease ? gene.diseaseExpr : gene.controlExpr;
+                    row.push(baseExpr + (Math.random() - 0.5) * 2);
+                }
+                return row;
+            });
+
+            const trace = {
+                z: zValues,
+                type: 'heatmap',
+                colorscale: 'RdYlBu',
+                reversescale: true,
+                y: topGenes.map(g => g.symbol),
+                hoverongaps: false,
+                hovertemplate: 'Gene: %{y}<br>Sample: %{x}<br>Expression: %{z:.2f}<extra></extra>'
+            };
+
+            const layout = {
+                title: 'Expression Heatmap (Top 20 Significant Genes)',
+                xaxis: { title: 'Samples (Disease → Control)', side: 'bottom' },
+                yaxis: { title: 'Genes' },
+                margin: { t: 50, r: 20, b: 50, l: 100 },
+                plot_bgcolor: '#f8f9fa',
+                paper_bgcolor: 'transparent',
+                font: { family: 'Segoe UI', size: 10 }
+            };
+
+            Plotly.newPlot('heatmap', [trace], layout, {responsive: true});
+        }
+
+        function searchGene() {
+            const query = document.getElementById('geneSearch').value.trim().toUpperCase();
+            const resultsDiv = document.getElementById('searchResults');
+            
+            if (!query || !currentData) {
+                resultsDiv.innerHTML = '<p style="color: #666; padding: 20px;">Please enter a gene symbol and run analysis first.</p>';
+                return;
+            }
+
+            const matchingGenes = currentData.genes.filter(gene => 
+                gene.symbol.toUpperCase().includes(query)
+            ).slice(0, 10);
+
+            if (matchingGenes.length === 0) {
+                resultsDiv.innerHTML = `<p style="color: #666; padding: 20px;">No genes found matching "${query}"</p>`;
+                return;
+            }
+
+            const resultsHTML = matchingGenes.map(gene => `
+                <div class="gene-card">
+                    <div class="gene-name">${gene.symbol}</div>
+                    <div class="gene-stats">
+                        <div class="stat">
+                            <div class="stat-value">${gene.foldChange.toFixed(2)}</div>
+                            <div>Fold Change</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${gene.pValue.toExponential(2)}</div>
+                            <div>p-value</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value">${gene.avgExpression.toFixed(2)}</div>
+                            <div>Avg Expression</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" style="color: ${gene.isSignificant ? '#28a745' : '#6c757d'}">${gene.isSignificant ? 'Yes' : 'No'}</div>
+                            <div>Significant</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            resultsDiv.innerHTML = resultsHTML;
+        }
+
+        // Initialize with default analysis
+        document.addEventListener('DOMContentLoaded', function() {
+            performAnalysis();
+        });
+
+        // Enter key support for gene search
+        document.getElementById('geneSearch').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchGene();
+            }
+        });
+    </script>
+</body>
+</html>
