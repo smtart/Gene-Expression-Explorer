@@ -1,4 +1,3 @@
-# Gene-Expression-Explorer
 # Gene Expression Explorer 🧬
 
 A comprehensive web-based bioinformatics tool for analyzing differential gene expression data from NCBI's GEO repository. This interactive application enables researchers and students to explore biomedical datasets, identify biomarkers, and visualize gene expression patterns through modern web technologies.
